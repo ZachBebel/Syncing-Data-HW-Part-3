@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+</head>
+
+<body>
+    <canvas id="canvas" height="500" width="500">Please use an HTML 5 browser</canvas>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        "use strict";
+
+        var canvas;
+        var ctx;
+        //our websocket connection
+        var socket;
+
+
+        var user = 'user' + (Math.floor((Math.random() * 1000)) + 1);
+        var draws = {};
+        var drawColor;
+
+        // http://stackoverflow.com/questions/1484506/random-color-generator-in-javascript
+        function getRandomColor() {
+            var letters = '0123456789ABCDEF'.split('');
+            var color = '#';
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        //redraw all squares to the screen
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var keys = Object.keys(draws);
+            for (var i = 0; i < keys.length; i++) {
+                var drawCall = draws[keys[i]];
+                ctx.fillStyle = drawCall.color;
+                ctx.fillRect(drawCall.x, drawCall.y, drawCall.width, drawCall.height);
+            }
+        }
+
+        function setup() {
+            var time = new Date().getTime();
+            var x = Math.floor(Math.random() * 450); //random x position
+            var y = Math.floor(Math.random() * 450); //random y position
+            draws[user] = {
+                lastUpdate: time,
+                x: x,
+                y: y,
+                width: 50,
+                height: 50,
+                color: drawColor
+            };
+        }
+
+        function handleMessage(data) {
+            if (!draws[data.name]) {
+                draws[data.name] = data.coords;
+            } else if (data.coords.lastUpdate > draws[data.name].lastUpdate) {
+                draws[data.name] = data.coords;
+            }
+            draw(); //redraw after updates
+        }
+
+
+        function init() {
+            canvas = document.querySelector("#canvas");
+            ctx = canvas.getContext("2d");
+
+            drawColor = getRandomColor();
+
+            //Connect to our server (io added automatically by socket.io when embedding it in the HTTP app on the server side)
+            //This will return a new websocket connection. Every call to io.connect will return a new websocket connection 
+            //BUT not necessarily close the existing one.
+            //You can absolutely use multiple websockets on the client, but you have to manage which ones are listening to which
+            //messages. In cases like this, you only need one.
+            socket = io.connect();
+
+            //When the socket connects successfully
+            socket.on('connect', function () {
+
+                setup();
+
+                //start our automated messages to the server every second. 
+                //This is just to show communication. Again, normally this would be invoked by a user action, not automated
+                setInterval(function () {
+                    var time = new Date().getTime();
+                    draws[user].lastUpdate = time;
+                    draws[user].x = (draws[user].x + 5) % 450; // wrap around canvas
+                    socket.emit('drawToServer', {
+                        name: user,
+                        coords: draws[user]
+                    });
+                    draw();
+                }, 1000);
+            });
+
+            //When our socket receives 'updatedMovement' messages from the server, call our update function
+            socket.on('drawToClient', handleMessage);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+
+</html>
